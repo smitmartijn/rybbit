@@ -27,6 +27,7 @@ vi.mock("../../db/geolocation/asn.js", async importOriginal => {
   };
 });
 
+import { ingestAuthCache } from "./ingestAuthCache.js";
 import { resolveTrackingRequest } from "./trackingRequest.js";
 
 const site = {
@@ -46,6 +47,7 @@ const payload = (overrides: Record<string, unknown> = {}) =>
 describe("resolveTrackingRequest", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    ingestAuthCache.clear();
     mocks.getConfig.mockResolvedValue(site);
     mocks.lookupAsn.mockReturnValue(null);
   });
@@ -119,6 +121,18 @@ describe("resolveTrackingRequest", () => {
       ipAddress: "198.51.100.10",
       trustedServerSideIngestion: false,
     });
+  });
+
+  it("verifies a bearer token once for a run of events, not once per event", async () => {
+    mocks.checkApiKey.mockResolvedValue({ valid: true, statements: { ingest: ["write"] } });
+    const send = () =>
+      resolveTrackingRequest(request({ authorization: "Bearer sk_test" }), payload({ ip_address: "203.0.113.10" }));
+
+    const resolved = await Promise.all([send(), send(), send()]);
+    resolved.push(await send());
+
+    expect(resolved.map(r => r!.trustedServerSideIngestion)).toEqual([true, true, true, true]);
+    expect(mocks.checkApiKey).toHaveBeenCalledOnce();
   });
 
   it("carries an ASN resolver that answers each IP once per request", async () => {

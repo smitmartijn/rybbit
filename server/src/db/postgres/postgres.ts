@@ -17,6 +17,12 @@ const maxConnections = cluster.isWorker
     ? 5
     : 20;
 
+// Postgres here holds configuration and accounts, never analytics, so no query
+// should run long. Without a ceiling a stuck one holds its connection forever,
+// and with as few as 5 per worker the requests behind it wait just as long.
+// 0 disables the ceiling.
+const statementTimeoutMs = parseInt(process.env.POSTGRES_STATEMENT_TIMEOUT_MS || "30000", 10);
+
 // Create postgres connection
 const client = postgres({
   host: process.env.POSTGRES_HOST || "postgres",
@@ -26,6 +32,8 @@ const client = postgres({
   password: process.env.POSTGRES_PASSWORD,
   onnotice: () => {},
   max: maxConnections,
+  connect_timeout: 10,
+  connection: { statement_timeout: statementTimeoutMs },
 });
 
 // Create drizzle ORM instance
