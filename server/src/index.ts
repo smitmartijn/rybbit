@@ -25,6 +25,7 @@ import { pageviewQueue } from "./services/tracker/pageviewQueue.js";
 import { lifecycleEmailService } from "./services/lifecycleEmails/lifecycleEmailService.js";
 import { telemetryService } from "./services/telemetryService.js";
 import { handleIdentify } from "./services/tracker/identifyService.js";
+import { batchIngestion, trackBatch } from "./services/tracker/trackBatch.js";
 import { trackEvent } from "./services/tracker/trackEvent.js";
 import { startSiteBaselineRefresh } from "./services/tracker/botBlocking/siteBaseline.js";
 import { usageService } from "./services/usageService.js";
@@ -129,6 +130,7 @@ server.get("/api/replay.js", async (_, reply) => reply.sendFile("rrweb.min.js", 
 server.get("/api/metrics.js", async (_, reply) => reply.sendFile("web-vitals.iife.js", { maxAge: "1d" }));
 
 server.post("/api/track", trackEvent);
+server.post("/api/track/batch", trackBatch);
 server.post("/api/identify", handleIdentify);
 
 // Register API routes with /api prefix
@@ -210,6 +212,9 @@ const shutdown = async (signal: string) => {
     // Flush events still buffered for the next batch insert, then the
     // identity backfills, which are held for several minutes to keep mutation
     // submissions rare; without this, a deploy drops whatever is still pending.
+    // Batches are acknowledged before they are ingested, so finish those first:
+    // they are what still feeds the queues below.
+    await batchIngestion.drain();
     await Promise.all([pageviewQueue.drain(), botEventQueue.drain(), botObservationQueue.drain()]);
     await identityBackfillQueue.drainCompletely();
 

@@ -48,7 +48,8 @@ export interface TrackingRequest {
   /** Request-scoped ASN resolver: each IP is looked up at most once per event. */
   lookupAsn: AsnLookup;
   /**
-   * When the request arrived. This is the event's timestamp *and* the instant
+   * When the request arrived — or, for a batched event, when its sender says it
+   * happened. This is the event's timestamp *and* the instant
    * that decides which UTC day its salted fingerprint belongs to, so the two can
    * never disagree about the day.
    */
@@ -84,11 +85,14 @@ async function isTrustedServerSideIngestion(request: FastifyRequest, siteId: num
  */
 export async function resolveTrackingRequest(
   request: FastifyRequest,
-  payload: ValidatedTrackingPayload
+  payload: ValidatedTrackingPayload,
+  // occurredAt: when the event happened, for a batch that reports events after
+  // the fact. Only the batch endpoint passes it, and only for trusted callers.
+  options: { occurredAt?: Date } = {}
 ): Promise<TrackingRequest | null> {
   // Stamped before the first await: a cold Site Configuration read or a slow
   // API-key check must not push the event's time forward into another bucket.
-  const receivedAt = new Date();
+  const receivedAt = options.occurredAt ?? new Date();
 
   const site = await siteConfig.getConfig(payload.site_id);
   if (!site) return null;

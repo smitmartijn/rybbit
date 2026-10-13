@@ -6,6 +6,7 @@ const HIGH_VOLUME_SUCCESS_ROUTES = new Set([
   "/api/replay.js",
   "/api/script.js",
   "/api/track",
+  "/api/track/batch",
 ]);
 
 function requestRoute(request: FastifyRequest): string {

@@ -233,6 +233,72 @@ Track JavaScript errors. Set `type: "error"`. `event_name` is the error type and
 
 API keys are limited to **500 requests per 10 minutes**. Exceeding the limit returns a `429` status code.
 
+### Sending events in batches
+
+```
+POST /api/track/batch
+```
+
+Send up to **500 events in one request**. Use this from a server or desktop backend that buffers events and flushes them every few seconds, instead of making one request per event. An API key with the `ingest:write` scope is required, and it must be allowed to ingest for every site in the batch.
+
+The body is `{ "events": [...] }`. Each event takes the same fields as `/api/track`, plus one more:
+
+<TypeTable
+  type={{
+    timestamp: {
+      description: 'When the event happened. Defaults to the time the batch arrives. Must be less than 24 hours old; a timestamp in the future is treated as now.',
+      type: 'string',
+      typeDescription: 'ISO 8601 datetime, e.g. 2026-01-15T10:30:00Z',
+    },
+  }}
+/>
+
+The endpoint answers `202` as soon as the batch is validated; the events are processed afterwards. Events that fail validation are skipped and listed in `rejected` by their position in the batch, and the rest are still accepted.
+
+- `400` — the body is malformed, or no event in it is valid
+- `401` — no API key was sent
+- `403` — the API key cannot ingest for one of the sites; nothing is ingested
+- `404` — one of the sites does not exist; nothing is ingested
+- `503` — the server is backlogged; retry after the `Retry-After` interval
+
+A batch is not deduplicated. If a request times out, resending it may record its events twice.
+
+Sessions are grouped by when events arrive, not by their `timestamp`, so flush often (every few seconds) rather than holding events for long periods.
+
+```bash title="Batch request"
+curl -X POST "https://app.rybbit.io/api/track/batch" \
+  -H "Authorization: Bearer your_api_key_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "events": [
+      {
+        "site_id": "1",
+        "type": "pageview",
+        "pathname": "/settings",
+        "ip_address": "203.0.113.10",
+        "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) MyApp/1.2.0",
+        "timestamp": "2026-01-15T10:30:00Z"
+      },
+      {
+        "site_id": "1",
+        "type": "custom_event",
+        "event_name": "export_clicked",
+        "ip_address": "203.0.113.10",
+        "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) MyApp/1.2.0",
+        "timestamp": "2026-01-15T10:30:04Z"
+      }
+    ]
+  }'
+```
+
+```json title="Batch response"
+{
+  "success": true,
+  "accepted": 2,
+  "rejected": []
+}
+```
+
 </div>
 <div className="flex flex-col gap-4">
 
