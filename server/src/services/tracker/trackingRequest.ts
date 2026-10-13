@@ -4,6 +4,7 @@ import { checkApiKey } from "../../lib/auth-utils.js";
 import { hasScope } from "../../lib/scopes.js";
 import { siteConfig, type SiteConfigData } from "../../lib/siteConfig.js";
 import { getRequestUserAgent } from "../../utils.js";
+import { ingestAuthCache } from "./ingestAuthCache.js";
 import { collectCandidateClientIps, resolveClientIp } from "./resolveClientIp.js";
 import type { ValidatedTrackingPayload } from "./trackingPayload.js";
 
@@ -67,8 +68,12 @@ async function isTrustedServerSideIngestion(request: FastifyRequest, siteId: num
     return false;
   }
 
-  const apiKeyResult = await checkApiKey(request, { siteId });
-  return apiKeyResult.valid && hasScope(apiKeyResult.statements, { resource: "ingest", action: "write" });
+  // Memoized per (token, Site): see ingestAuthCache for why this endpoint, alone
+  // among the bearer-authenticated ones, cannot afford to verify per request.
+  return ingestAuthCache.isTrusted(authHeader.substring(7), siteId, async () => {
+    const apiKeyResult = await checkApiKey(request, { siteId });
+    return apiKeyResult.valid && hasScope(apiKeyResult.statements, { resource: "ingest", action: "write" });
+  });
 }
 
 /**
